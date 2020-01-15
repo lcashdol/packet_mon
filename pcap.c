@@ -423,21 +423,21 @@ got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet)
 	static int count = 1;                   /* packet counter */
 	
 	/* declare pointers to packet headers */
-	const struct sniff_ethernet *ethernet;  /* The ethernet header [1] */
+//	const struct sniff_ethernet *ethernet;  /* The ethernet header [1] */
 	const struct sniff_ip *ip;              /* The IP header */
 	const struct sniff_tcp *tcp;            /* The TCP header */
 	const struct udphdr *udp;            /* The TCP header */
-	const char *payload;                    /* Packet payload */
+	const char unsigned *payload;                    /* Packet payload */
 
 	int size_ip;
 	int size_tcp;
 	int size_payload;
 	
-	printf("\nPacket number %d:\n", count);
+/*	printf("\nPacket number %d:\n", count);*/
 	count++;
 	
 	/* define ethernet header */
-	ethernet = (struct sniff_ethernet*)(packet);
+//	ethernet = (struct sniff_ethernet*)(packet);
 	
 	/* define/compute ip header offset */
 	ip = (struct sniff_ip*)(packet + SIZE_ETHERNET);
@@ -530,7 +530,7 @@ int main(int argc, char **argv)
 	bpf_u_int32 net;			/* ip */
 	int num_packets = 10;			/* number of packets to capture */
 
-	print_app_banner();
+	//print_app_banner();
 
 	/* check for capture device name on command-line */
 	if (argc == 2) {
@@ -560,9 +560,9 @@ int main(int argc, char **argv)
 	}
 
 	/* print capture info */
-	printf("Device: %s\n", dev);
+/*	printf("Device: %s\n", dev);
 	printf("Number of packets: %d\n", num_packets);
-	printf("Filter expression: %s\n", filter_exp);
+	printf("Filter expression: %s\n", filter_exp);*/
 
 	/* open capture device */
 	handle = pcap_open_live(dev, SNAP_LEN, 1, 1000, errbuf);
