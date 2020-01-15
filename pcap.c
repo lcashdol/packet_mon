@@ -432,6 +432,10 @@ got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet)
 	int size_ip;
 	int size_tcp;
 	int size_payload;
+	int dstport =0;
+	int srcport = 0;
+	char srcip[16];
+	char dstip[16];
 	
 /*	printf("\nPacket number %d:\n", count);*/
 	count++;
@@ -448,8 +452,8 @@ got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet)
 	}
 
 	/* print source and destination IP addresses */
-printf("From:%s To:%s\n", inet_ntoa(ip->ip_src),inet_ntoa(ip->ip_dst));
-//printf("From:%s:%d To:%s:%d\n", inet_ntoa(ip->ip_src),ntohs(udp->th_sport),inet_ntoa(ip->ip_dst),ntohs(udp->th_dport));
+        strncpy(srcip,inet_ntoa(ip->ip_src),15);
+        strncpy(dstip,inet_ntoa(ip->ip_dst),15);
 	
 	/* determine protocol */	
 /*	switch(ip->ip_p) {
@@ -476,6 +480,7 @@ printf("From:%s To:%s\n", inet_ntoa(ip->ip_src),inet_ntoa(ip->ip_dst));
 	
 	/* define/compute tcp header offset */
 if (ip->ip_p == IPPROTO_TCP) {
+	printf("TCP ");
 	tcp = (struct sniff_tcp*)(packet + SIZE_ETHERNET + size_ip);
 	size_tcp = TH_OFF(tcp)*4;
 	if (size_tcp < 20) {
@@ -484,10 +489,8 @@ if (ip->ip_p == IPPROTO_TCP) {
 	}
 
 
-printf("From:%s:%d To:%s:%d\n", inet_ntoa(ip->ip_src),ntohs(tcp->th_sport),inet_ntoa(ip->ip_dst),ntohs(tcp->th_dport));
-	
-//	printf("   Src port: %d\n", ntohs(tcp->th_sport));
-//	printf("   Dst port: %d\n", ntohs(tcp->th_dport));
+srcport =  ntohs(tcp->th_sport);	
+dstport =  ntohs(tcp->th_dport);	
 	
 	/* define/compute tcp payload (segment) offset */
 	payload = (u_char *)(packet + SIZE_ETHERNET + size_ip + size_tcp);
@@ -507,12 +510,14 @@ printf("From:%s:%d To:%s:%d\n", inet_ntoa(ip->ip_src),ntohs(tcp->th_sport),inet_
 
 if (ip->ip_p == IPPROTO_UDP) {
 
+printf("UDP ");
+udp = (struct udphdr*)(packet + SIZE_ETHERNET + size_ip);
+srcport =  ntohs(udp->source);	
+dstport =  ntohs(udp->dest);	
 
- udp = (struct udphdr*)(packet + SIZE_ETHERNET + size_ip);
-            printf("%d\n",ntohs(udp->source));
-            printf("%d\n",ntohs(udp->dest));
+}//UDP PACKET
 
-}
+printf("%s:%d\n",srcip,dstport);
 
 return;
 }
