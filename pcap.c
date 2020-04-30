@@ -202,12 +202,15 @@
 #include <stdlib.h>
 #include <ctype.h>
 #include <errno.h>
+#include <time.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>
 #include <netinet/udp.h>
 #include <arpa/inet.h>
+#include <my_global.h>
+#include <mysql.h>
 
 /* default snap length (maximum bytes per packet to capture) */
 #define SNAP_LEN 1518
@@ -284,9 +287,10 @@ print_app_banner(void);
 void
 print_app_usage(void);
 
-/*
- * app name/banner
- */
+void ret_date(char *e);
+
+void finish_with_error(MYSQL *con);
+
 void
 print_app_banner(void)
 {
@@ -428,6 +432,7 @@ got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet)
 	const struct sniff_tcp *tcp;            /* The TCP header */
 	const struct udphdr *udp;            /* The TCP header */
 	const char unsigned *payload;                    /* Packet payload */
+        MYSQL *con = mysql_init(NULL);  /*Initialize MYSQL Database*/
 
 	int size_ip;
 	int size_tcp;
@@ -436,7 +441,16 @@ got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet)
 	int srcport = 0;
 	char srcip[16];
 	char dstip[16];
-	
+	char query[512];
+	int  day, month, year;
+        char date[32];
+
+
+	time_t now;
+        time(&now);
+        struct tm *local = localtime(&now);
+
+
 /*	printf("\nPacket number %d:\n", count);*/
 	count++;
 	
@@ -450,6 +464,17 @@ got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet)
 		printf("   * Invalid IP header length: %u bytes\n", size_ip);
 		return;
 	}
+
+
+
+  if (con == NULL) 
+  {
+      fprintf(stderr, "%s\n", mysql_error(con));
+      exit(1);
+  }  
+  if (mysql_real_connect(con, "localhost", "user", "password", "packets", 0, NULL, 0) == NULL) {
+      finish_with_error(con);
+  }    
 
 	/* print source and destination IP addresses */
         strncpy(srcip,inet_ntoa(ip->ip_src),15);
@@ -479,8 +504,10 @@ got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet)
 	 */
 	
 	/* define/compute tcp header offset */
+
+
 if (ip->ip_p == IPPROTO_TCP) {
-	printf("TCP ");
+//	printf("TCP ");
 	tcp = (struct sniff_tcp*)(packet + SIZE_ETHERNET + size_ip);
 	size_tcp = TH_OFF(tcp)*4;
 	if (size_tcp < 20) {
@@ -488,10 +515,19 @@ if (ip->ip_p == IPPROTO_TCP) {
 		return;
 	}
 
-
 srcport =  ntohs(tcp->th_sport);	
 dstport =  ntohs(tcp->th_dport);	
-	
+day = local->tm_mday;
+month = local->tm_mon + 1;
+year = local->tm_year + 1900;
+sprintf(date,"%d-%02d-%02d", year, month, day);
+
+printf("TCP Packet %s:%d logged %s.\n",srcip,dstport,date);
+sprintf(query,"INSERT INTO entry VALUES(NULL,'%s','TCP','%s','%d');",date,srcip,dstport);
+  if (mysql_query(con, query)) {
+      finish_with_error(con);
+  }
+	//
 	/* define/compute tcp payload (segment) offset */
 	payload = (u_char *)(packet + SIZE_ETHERNET + size_ip + size_tcp);
 	
@@ -502,23 +538,36 @@ dstport =  ntohs(tcp->th_dport);
 	 * Print payload data; it might be binary, so don't just
 	 * treat it as a string.
 	 */
-	if (size_payload > 0) {
-		printf("   Payload (%d bytes):\n", size_payload);
-		print_payload(payload, size_payload);
-	}
+//	if (size_payload > 0) {
+	//	printf("   Payload (%d bytes):\n", size_payload);
+	//	print_payload(payload, size_payload);
+//	}
 }//TCP PACKET
 
 if (ip->ip_p == IPPROTO_UDP) {
+srcport =  ntohs(tcp->th_sport);	
+dstport =  ntohs(tcp->th_dport);	
+day = local->tm_mday;
+month = local->tm_mon + 1;
+year = local->tm_year + 1900;
+sprintf(date,"%d-%02d-%02d", year, month, day);
 
-printf("UDP ");
+//printf("UDP ");
+//printf("%s:%d\n",srcip,dstport);
 udp = (struct udphdr*)(packet + SIZE_ETHERNET + size_ip);
 srcport =  ntohs(udp->source);	
 dstport =  ntohs(udp->dest);	
+printf("UDP Packet %s:%d logged %s.\n",srcip,dstport,date);
+sprintf(query,"INSERT INTO entry VALUES(NULL,'%s','UDP','%s','%d');",date,srcip,dstport);
+  if (mysql_query(con, query)) {
+      finish_with_error(con);
+  }
 
 }//UDP PACKET
 
-printf("%s:%d\n",srcip,dstport);
+//printf("%s:%d\n",srcip,dstport);
 
+  mysql_close(con);
 return;
 }
 
@@ -533,7 +582,7 @@ int main(int argc, char **argv)
 	struct bpf_program fp;			/* compiled filter program (expression) */
 	bpf_u_int32 mask;			/* subnet mask */
 	bpf_u_int32 net;			/* ip */
-	int num_packets = 10;			/* number of packets to capture */
+	int num_packets = -1;			/* number of packets to capture */
 
 	//print_app_banner();
 
@@ -608,3 +657,81 @@ int main(int argc, char **argv)
 return 0;
 }
 
+void finish_with_error(MYSQL *con)
+{
+  fprintf(stderr, "%s\n", mysql_error(con));
+  mysql_close(con);
+  exit(1);        
+}
+
+void ret_date (char *t)
+{
+  /* return the current date for logging etc... */
+
+  time_t rawtime;
+  struct tm *timeinfo;
+  time (&rawtime);
+  timeinfo = localtime (&rawtime);
+  strftime (t, 24, "%Y-%m-%d", timeinfo);
+  printf("->%s\n",t);
+}
+
+
+
+/*
+int main(int argc, char **argv)
+{
+  
+  if (con == NULL) 
+  {
+      fprintf(stderr, "%s\n", mysql_error(con));
+      exit(1);
+  }  
+
+  if (mysql_real_connect(con, "localhost", "user12", "34klq*", "testdb", 0, NULL, 0) == NULL) {
+      finish_with_error(con);
+  }    
+  
+  if (mysql_query(con, "DROP TABLE IF EXISTS Cars")) {
+      finish_with_error(con);
+  }
+  
+  if (mysql_query(con, "CREATE TABLE Cars(Id INT, Name TEXT, Price INT)")) {      
+      finish_with_error(con);
+  }
+  
+  if (mysql_query(con, "INSERT INTO Cars VALUES(1,'Audi',52642)")) {
+      finish_with_error(con);
+  }
+  
+  if (mysql_query(con, "INSERT INTO Cars VALUES(2,'Mercedes',57127)")) {
+      finish_with_error(con);
+  }
+  
+  if (mysql_query(con, "INSERT INTO Cars VALUES(3,'Skoda',9000)")) {
+      finish_with_error(con);
+  }
+  
+  if (mysql_query(con, "INSERT INTO Cars VALUES(4,'Volvo',29000)")) {
+      finish_with_error(con);
+  }
+  
+  if (mysql_query(con, "INSERT INTO Cars VALUES(5,'Bentley',350000)")) {
+      finish_with_error(con);
+  }
+  
+  if (mysql_query(con, "INSERT INTO Cars VALUES(6,'Citroen',21000)")) {
+      finish_with_error(con);
+  }
+  
+  if (mysql_query(con, "INSERT INTO Cars VALUES(7,'Hummer',41400)")) {
+      finish_with_error(con);
+  }
+  
+  if (mysql_query(con, "INSERT INTO Cars VALUES(8,'Volkswagen',21600)")) {
+      finish_with_error(con);
+  }
+
+  mysql_close(con);
+  exit(0);
+}*/
